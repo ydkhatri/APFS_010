@@ -808,7 +808,10 @@ void BookmarkVolumes(obj & csb) {
 }
 
 string GetVolName(obj & vsb) {
-    return vsb.body.volname;
+    local string ret = vsb.body.volname;
+    if ((vsb.body.encryption_flags & 1) != 1)
+        ret += " <ENCRYPTED volume>";
+    return ret;
 }
 
 //MAIN
