@@ -1,5 +1,5 @@
 # APFS_010
-This is an [010 Editor](http://sweetscape.com/010editor/) template for APFS. It is a port of apfs.ksy with some small additions/modifications. The original is located here:
+This is an [010 Editor](http://sweetscape.com/010editor/) template for APFS. It is a port of apfs.ksy with some additions/modifications. The original is located here:
 https://github.com/cugu/apfs.ksy
 
 ## License
