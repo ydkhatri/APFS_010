@@ -68,8 +68,27 @@ string ReadFeatures(features & f) {
   local string ret = "";
   SPrintf(ret, "(%d) ", f);
   if (f & features_case_insensitive) ret += "case_insensitive,";
-  if (f & features_unknown_type4)    ret += "encrypted?,";
+  if (f & features_unknown_type4)    ret += "unknown_type4,";
   if (f & features_case_sensitive)   ret += "case_sensitive,";
+  if (Strcmp(ret[Strlen(ret)-1], ",") == 0)
+      ret = StrDel(ret, Strlen(ret)-1, 1);
+  return ret;
+}
+
+typedef enum <uint64> {
+  enc_type_NotEncrypted = 1,
+  enc_type_unknown2 = 2,
+  enc_type_unknown4 = 4,
+  enc_type_unknown8 = 8,
+} encryption_types <read=ReadEncryption>;
+
+string ReadEncryption(encryption_types & e) {
+  local string ret = "";
+  SPrintf(ret, "(%d) ", e);
+  if (e & enc_type_NotEncrypted) ret += "NotEncrypted,";
+  if (e & enc_type_unknown2)   ret += "unknown_2,";
+  if (e & enc_type_unknown4)   ret += "unknown_4,";
+  if (e & enc_type_unknown8)   ret += "unknown_8,";
   if (Strcmp(ret[Strlen(ret)-1], ",") == 0)
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
@@ -216,14 +235,19 @@ typedef struct {
     uint64 fs_oids[max_file_systems];
     if (max_file_systems < 100)
         uint64 padding[100 - max_file_systems];
-    uint   unknown_version <format=hex>; // seems to be incremental, block0 has highest number
-
+    uint64 unknown_version <format=hex>; // seems to be incremental, block0 has highest number
+    uint64 unknowns[0x26];      // only for encrypted
+    uint64 keybag_block_start;  // only for encrypted
+    uint64 keybag_block_count;  // only for encrypted
+    uint64 unknown_0x520;       // only for encrypted
+    local uint pos_end = FTell();
     // checkpoint
     SeekBlock(xp_desc_base + xp_desc_index);
     obj checkpoint;
     // spaceman
     SeekBlock(xp_data_base + xp_data_index);
     obj spaceman;
+    FSeek(pos_end);
 } container_superblock;
 
 
@@ -706,7 +730,7 @@ typedef struct {  // missing: next_obj_id, fs_flags, unmount_time
     uint64 unknown_120; // revert_to_xid, total_blocks_freed?
     Uuid   vol_uuid;
     uint64 last_mod_time <read=ApfsTimeRead>;
-    uint64 initial_xid;
+    encryption_types encryption_flags;
     volume_access_info formatted_by;
     volume_access_info modified_by[8];
     char   volname[];
@@ -797,3 +821,4 @@ if (!CheckApfsAndSetBlockSize()) {
 
 obj csb;//container super block
 BookmarkVolumes(csb);
+
