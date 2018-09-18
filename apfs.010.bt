@@ -3,7 +3,7 @@
 //
 //      File: Apfs.bt
 //   Authors: Yogesh Khatri <yogesh@swiftforensics.com>
-//   Version: 1.0
+//   Version: 1.1
 //   Purpose: Read APFS structures
 //  Category: File Systems
 // File Mask: 
@@ -156,7 +156,7 @@ typedef enum <ushort> {
     ea_type_symlink = 6
 } ea_type ;
 
-string ApfsTimeRead( uint64 & t )
+string ApfsTimeRead( int64 & t )
 {   
     // Convert to FILETIME
     return FileTimeToString( t/100L + 116444736000000000L );
@@ -396,10 +396,10 @@ typedef struct {
 typedef struct {  // 0x30
     uint64 parent_id;
     uint64 extents_id;
-    uint64 creation_timestamp <read=ApfsTimeRead>;
-    uint64 modified_timestamp <read=ApfsTimeRead>;
-    uint64 changed_timestamp <read=ApfsTimeRead>;
-    uint64 accessed_timestamp <read=ApfsTimeRead>;
+    int64  creation_timestamp <read=ApfsTimeRead>;
+    int64  modified_timestamp <read=ApfsTimeRead>;
+    int64  changed_timestamp <read=ApfsTimeRead>;
+    int64  accessed_timestamp <read=ApfsTimeRead>;
     uint64 flags;
     uint   nchildren_or_nlink;
     uint   unknown_60;
@@ -458,7 +458,7 @@ typedef struct { // 0x80
 
 typedef struct { // 0x90
     uint64 node_id;
-    uint64 timestamp <read=ApfsTimeRead>;
+    int64  timestamp <read=ApfsTimeRead>;
     item_type type_item;
 } drec_val;
 
@@ -667,7 +667,7 @@ typedef struct {
 
 typedef struct {
     char   id[32];
-    uint64 timestamp <read=ApfsTimeRead>;
+    int64  timestamp <read=ApfsTimeRead>;
     uint64 last_xid;
 } volume_access_info;
 
@@ -729,7 +729,7 @@ typedef struct {  // missing: next_obj_id, fs_flags, unmount_time
     uint64 unknown_112; // revert_to_xid, total_blocks_freed?
     uint64 unknown_120; // revert_to_xid, total_blocks_freed?
     Uuid   vol_uuid;
-    uint64 last_mod_time <read=ApfsTimeRead>;
+    int64  last_mod_time <read=ApfsTimeRead>;
     encryption_types encryption_flags;
     volume_access_info formatted_by;
     volume_access_info modified_by[8];
