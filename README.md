@@ -8,7 +8,11 @@ MIT
 ## Usage
 To use the template, simply load your raw disk (or container) image into 010. Then run template. 
 
-If the image is encrypted, you will still be able to navigate to the encrypted blocks, but not read any further. On encrypted volumes, you will not be able to get to file listings or file contents as the disk blocks for data and metadata are encrypted!
+If the image is encrypted, you will still be able to navigate to the encrypted blocks, but not read any further. On encrypted volumes, you will not be able to get to file listings or file contents as the disk blocks for data and metadata are encrypted!    
+  
+
+
+![Template output after run](/Template_run.png "Template output")
 
 ## Contribute
 Feel free to submit changes (pull requests) here.
