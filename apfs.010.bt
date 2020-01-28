@@ -17,9 +17,54 @@
 //------------------------------------------------
 // Update: Jan 09 2019 - started modification to APFS official spec
 // Update: Jan 17 2020 - EFI structures and Encryption structures added
+// Update: Jan 27 2020 - Read GPT partition, so no need to specify APFS start offset!
 
+typedef struct {
+  uint Data1 <format=hex>;
+  ushort  Data2 <format=hex>;
+  ushort  Data3 <format=hex>;
+  BigEndian();
+  ushort  Data4 <format=hex>;
+  ubyte  Data5[6] <format=hex>;
+  LittleEndian();
+} GUID  <read=GuidRead>;
+
+string GuidRead( GUID &g ) {
+  local string ret;
+  SPrintf(ret, "{%08x-%04x-%04x-%04x-%02x%02x%02x%02x%02x%02x}", g.Data1, g.Data2, g.Data3, g.Data4, g.Data5[0], g.Data5[1], g.Data5[2], g.Data5[3], g.Data5[4], g.Data5[5]);
+  return ret;
+}
+
+// GPT
+typedef struct {
+  char SIGNATURE[8];
+  DWORD  Revision;
+  DWORD  Headersize;
+  DWORD  CRC32OfHeader;
+  DWORD  Reserved;
+  uint64 CurrentLBA;
+  uint64 BackupLBA;
+  uint64 FirstUsableLBA;
+  uint64 LastUsableLBA;
+  GUID   DiskGUID;
+  uint64 PartitionEntriesLBA;
+  DWORD  NumOfPartitionEntries;
+  DWORD  SizeOfPartitionEntry;
+  DWORD  CRC32ofPartitionArray;
+  FSkip(420);
+} GPT;
+
+typedef struct {
+  GUID PartitionTypeGUID;
+  GUID PartitionGUID;
+  uint64 PartitionStartLBA;
+  uint64 PartitionEndLBA;
+  uint64 PartitionProperty;
+  wchar_t PartitionName[36]; //Unicode
+} GPTPAPTITIONTABLE <size=128>;
 
 //globals
+local uint64 DiskBlock_Size = 512; //default, we set this to actual later
 local uint64 Apfs_Offset = 409640 * 512; // <---- Set this to wherever your APFS container starts
 local uint Block_Size = 4096; //default, we set this to actual later
 local uint Follow_Pointer = true;
@@ -757,7 +802,7 @@ typedef struct {
     uint64 fusion_wbc_paddr;
     int64  fusion_wbc_count;
 
-    local uint pos_end = FTell();
+    local uint64 pos_end = FTell();
     // checkpoint
     if (xp_desc_blocks & 0x80000000) // highest bit set in xp_desc_blocks
       Printf("\nNot impl yet!\n");
@@ -1644,54 +1689,109 @@ typedef struct CheckpointDesc(uint num) {
   obj checkpoint_desc_nx[num] <optimize=false>;
 } ;
 
+typedef struct APFS(uint64 apfs_offset) {
+  DefineApfsContainer(apfs_offset);  
+} ;
 
-///
-//MAIN
-LittleEndian();
-FSeek(Apfs_Offset);
-
-if (!CheckApfsAndSetBlockSize()) {
-  Printf("\nError, starting point not an APFS container superblock. Set the 'Apfs_Offset' variable to correct value!");
-  Exit(1);
-}
-
-obj csb;//container super block in block zero
-
-
-SeekBlock(csb.body.xp_desc_base);
-//obj checkpoint_desc_nx[csb.body.xp_desc_blocks] <optimize=false>;
-CheckpointDesc cp(csb.body.xp_desc_blocks);
-
-//SeekBlock(csb.body.xp_data_base);
-//obj checkpoint_data_nx[csb.body.xp_data_blocks] <optimize=false>;
-
-// Checkpoint processing
-local uint i = 0;
-local uint64 max_xid = 0;
-local uint64 max_xid_block_pos = 0;
-SeekBlock(csb.body.xp_desc_base);
-local uint64 base_pos = FTell();
-local uint64 pos = 0;
-
-for (i=0; i< csb.body.xp_desc_blocks; ++i) { // assuming cont. blocks
-  if (cp.checkpoint_desc_nx[i].hdr.type == obj_type_container_superblock) {
-    if (cp.checkpoint_desc_nx[i].hdr.xid >= max_xid) {
-      // validate it 
-      pos = base_pos + (i * Block_Size);
-      if (fletcher64(pos, Block_Size) == 0) {
-        max_xid = cp.checkpoint_desc_nx[i].hdr.xid;
-        max_xid_block_pos = pos;
+void DefineApfsContainer(uint64 apfs_offset) {
+  Apfs_Offset = apfs_offset;
+  FSeek(Apfs_Offset);
+  if (!CheckApfsAndSetBlockSize()) {
+    Printf("\nError, starting point not an APFS container superblock. Set the 'Apfs_Offset' variable to correct value!");
+    Exit(1);
+  }
+  
+  obj csb;//container super block in block zero
+  
+  
+  SeekBlock(csb.body.xp_desc_base);
+  //obj checkpoint_desc_nx[csb.body.xp_desc_blocks] <optimize=false>;
+  CheckpointDesc cp(csb.body.xp_desc_blocks);
+  
+  //SeekBlock(csb.body.xp_data_base);
+  //obj checkpoint_data_nx[csb.body.xp_data_blocks] <optimize=false>;
+  
+  // Checkpoint processing
+  local uint i = 0;
+  local uint64 max_xid = 0;
+  local uint64 max_xid_block_pos = 0;
+  SeekBlock(csb.body.xp_desc_base);
+  local uint64 base_pos = FTell();
+  local uint64 pos = 0;
+  
+  for (i=0; i< csb.body.xp_desc_blocks; ++i) { // assuming cont. blocks
+    if (cp.checkpoint_desc_nx[i].hdr.type == obj_type_container_superblock) {
+      if (cp.checkpoint_desc_nx[i].hdr.xid >= max_xid) {
+        // validate it 
+        pos = base_pos + (i * Block_Size);
+        if (fletcher64(pos, Block_Size) == 0) {
+          max_xid = cp.checkpoint_desc_nx[i].hdr.xid;
+          max_xid_block_pos = pos;
+        }
       }
     }
   }
+  if (max_xid > csb.hdr.xid)
+    Printf("\nFound newer xid=%Lu @ offset 0x%Lu. Using this Container superblock.", max_xid, pos);
+  
+  FSeek(pos);
+  obj valid_csb;
+  BookmarkVolumes(valid_csb);
+  if (valid_csb.body.efi_jumpstart) {
+    SeekBlock(valid_csb.body.efi_jumpstart);
+    obj efi_info;
+  }
+  /*if (valid_csb.body.keylocker_block_count) {
+    SeekBlock(valid_csb.body.keylocker_paddr);
+    obj keybag; // This is encrypted!
+  }*/
 }
-if (max_xid > csb.hdr.xid)
-  Printf("\nFound newer xid=%Lu @ offset 0x%Lu. Using this Container superblock.", max_xid, pos);
 
-FSeek(pos);
-obj valid_csb;
-BookmarkVolumes(valid_csb);
-if (csb.body.efi_jumpstart) {
-  SeekBlock(csb.body.efi_jumpstart);
-  obj efi_info;
+int IsApfsGuid(GUID & g) {
+  return (g.Data1 == 0x7C3457EF) && (g.Data2 == 0) && (g.Data3 == 0x11AA) &&
+         (g.Data4 == 0xAA11) && (g.Data5[0] == 0) && 
+         (g.Data5[1] == 0x30) && (g.Data5[2] == 0x65) && (g.Data5[3] == 0x43) && 
+         (g.Data5[4] == 0xEC) && (g.Data5[5] == 0xAC);
+}
+
+//MAIN
+LittleEndian();
+FSeek(0);
+if (ReadUInt() == 0x4253584E) { // No partitions, just a container at offset 0
+  APFS apfs(0);
+}
+else {
+  FSeek(512);
+  if (ReadUInt64() == 0x5452415020494645) { // Found EFI PART @ 512
+    DiskBlock_Size = 512;
+    GPT gpt_header;
+    GPTPAPTITIONTABLE table[128];
+    local uint gpt_index;
+    for (gpt_index=0; gpt_index < 128; gpt_index++) {
+      if (IsApfsGuid(table[gpt_index].PartitionTypeGUID) != 0) {
+        FSeek(table[gpt_index].PartitionStartLBA * DiskBlock_Size);
+        APFS apfs(table[gpt_index].PartitionStartLBA * DiskBlock_Size);
+      }
+    }
+  }
+  else {
+    FSeek(4096);
+    if (ReadUInt64() == 0x5452415020494645) { // Found EFI PART @ 4096
+      DiskBlock_Size = 4096;
+      GPT gpt_header;
+      FSkip(4096-512);
+      GPTPAPTITIONTABLE table[128];
+      local uint gpt_index;
+      for (gpt_index=0; gpt_index < 128; gpt_index++) {
+        if (IsApfsGuid(table[gpt_index].PartitionTypeGUID) != 0) {
+          FSeek(table[gpt_index].PartitionStartLBA * DiskBlock_Size);
+          APFS apfs(table[gpt_index].PartitionStartLBA * DiskBlock_Size);
+        }
+      }
+    }
+    else {
+      Printf("\nError, could not find an APFS container superblock or an EFI Partition table!");
+      Exit(1);
+    }
+  }
 }
