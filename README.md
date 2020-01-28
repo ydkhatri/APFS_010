@@ -1,5 +1,5 @@
 # APFS_010
-This is an [010 Editor](http://sweetscape.com/010editor/) template for APFS. It was initially a port of apfs.ksy with some additions/modifications. Since then, Apple released the official [specification](https://developer.apple.com/support/downloads/Apple-File-System-Reference.pdf) and this template has been updated to add most of the structures used in APFS. The original ksy file is located here:
+This is an [010 Editor](http://sweetscape.com/010editor/) template for APFS. It was initially a port of apfs.ksy with some additions/modifications. Since then, Apple released the official [specification](https://developer.apple.com/support/downloads/Apple-File-System-Reference.pdf), and this template has been accordingly updated to add most of the structures used in APFS. The original ksy file is located here:
 https://github.com/cugu/apfs.ksy
 
 ## License
