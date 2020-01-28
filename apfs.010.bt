@@ -1755,8 +1755,9 @@ int IsApfsGuid(GUID & g) {
 
 //MAIN
 LittleEndian();
-FSeek(0);
+FSeek(0x20);
 if (ReadUInt() == 0x4253584E) { // No partitions, just a container at offset 0
+  FSeek(0);
   APFS apfs(0);
 }
 else {
