@@ -820,12 +820,34 @@ typedef struct {
 } container_superblock;
 
 typedef struct {
+  //uint64 extentref_tree_oid; // inlined
+  //// BEGIN ref_obj
+  local uint64 rpos = FTell();
   uint64 extentref_tree_oid;
+  if (extentref_tree_oid == 0)
+      Printf("\n%s\n", "extentref_tree_oid was 0 in obj_ref!! Not defining extentref_tree!!");
+  else if (SeekBlock(extentref_tree_oid) != 0)
+      Printf("\n%s\n", "extentref_tree_oid was invalid in obj_ref!! Not defining extentref_tree!!");
+  else
+      obj extentref_tree;
+  FSeek(rpos + 8);
+  //// END ref_obj
+  //uint64 sblock_oid; inlined
+  //// BEGIN ref_obj
+  rpos = FTell();
   uint64 sblock_oid;
-  uint64 create_time;
-  uint64 change_time;
+  if (sblock_oid == 0)
+      Printf("\n%s\n", "sblock_oid was 0 in obj_ref!! Not defining sblock!!");
+  else if (SeekBlock(sblock_oid) != 0)
+      Printf("\n%s\n", "sblock_oid was invalid in obj_ref!! Not defining sblock!!");
+  else
+      obj sblock; //superblock
+  FSeek(rpos + 8);
+  //// END ref_obj
+  int64 create_time <read=ApfsTimeRead>;
+  int64 change_time <read=ApfsTimeRead>;
   uint64 inum;
-  uint32 extentref_tree_type;
+  uint32 extentref_tree_type  <read=ReadTreeType>;
   uint32 flags <read=ReadSnapMetaFlags>; 
   uint16 name_len;
   char name[name_len];
@@ -1199,7 +1221,7 @@ typedef struct {
     case kind_dir_stats: dir_stats_val val; break;
     case kind_sibling_map: sibling_map_val val; break;
     case kind_snap_name: snap_name_val val; break;
-    case kind_snap_metadata: snap_metadata_val; break;
+    case kind_snap_metadata: snap_metadata_val val; break;
   }
   FSeek(pos2);
 } node_entry;
