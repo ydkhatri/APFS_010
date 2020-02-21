@@ -64,8 +64,8 @@ typedef struct {
 
 //globals
 local uint64 DiskBlock_Size = 512; //default, we set this to actual later
-local uint64 Apfs_Offset = 409640 * 512; // <---- Set this to wherever your APFS container starts
-local uint Block_Size = 4096; //default, we set this to actual later
+local uint64 Apfs_Offset = 0; // default, we set this to actual later
+local uint Block_Size = 4096; // default, we set this to actual later
 local uint Follow_Pointer = true;
 local uint64 Current_Block_Offset = 0;
 
@@ -109,23 +109,23 @@ uint64 fletcher64(uint64 addr, uint64 len)
 // enums
 typedef enum <ushort> {
     obj_type_container_superblock = 1, // OBJECT_TYPE_NX_SUPERBLOCK
-    obj_type_btree = 2,             // OBJECT_TYPE_BTREE
-    obj_type_btree_node = 3,                 // OBJECT_TYPE_BTREE_NODE
-    obj_type_spaceman = 5,        // OBJECT_TYPE_SPACEMAN
-     obj_type_spaceman_cab = 6,    // OBJECT_TYPE_SPACEMAN_CAB
-    obj_type_spaceman_cib= 7,// OBJECT_TYPE_SPACEMAN_CIB
-     obj_type_spaceman_bitmap = 8,      // OBJECT_TYPE_SPACEMAN_BITMAP
-     obj_type_spaceman_free_queue = 9,  // OBJECT_TYPE_SPACEMAN_FREE_QUEUE
-     obj_type_extent_list_tree = 10,    // OBJECT_TYPE_EXTENT_LIST_TREE
-    obj_type_omap = 11,               // OBJECT_TYPE_OMAP
-    obj_type_checkpoint_map = 12,          // OBJECT_TYPE_CHECKPOINT_MAP
-    obj_type_fs = 13,   // OBJECT_TYPE_FS
-     obj_type_fstree = 14,             // OBJECT_TYPE_FSTREE
-     obj_type_blockreftree = 15,       // OBJECT_TYPE_BLOCKREFTREE
-     obj_type_snapmetatree = 16,       // OBJECT_TYPE_SNAPMETATREE
+    obj_type_btree = 2,                // OBJECT_TYPE_BTREE
+    obj_type_btree_node = 3,           // OBJECT_TYPE_BTREE_NODE
+    obj_type_spaceman = 5,             // OBJECT_TYPE_SPACEMAN
+    obj_type_spaceman_cab = 6,         // OBJECT_TYPE_SPACEMAN_CAB
+    obj_type_spaceman_cib= 7,          // OBJECT_TYPE_SPACEMAN_CIB
+    obj_type_spaceman_bitmap = 8,      // OBJECT_TYPE_SPACEMAN_BITMAP
+    obj_type_spaceman_free_queue = 9,  // OBJECT_TYPE_SPACEMAN_FREE_QUEUE
+    obj_type_extent_list_tree = 10,    // OBJECT_TYPE_EXTENT_LIST_TREE
+    obj_type_omap = 11,                // OBJECT_TYPE_OMAP
+    obj_type_checkpoint_map = 12,      // OBJECT_TYPE_CHECKPOINT_MAP
+    obj_type_fs = 13,                  // OBJECT_TYPE_FS
+    obj_type_fstree = 14,              // OBJECT_TYPE_FSTREE
+    obj_type_blockreftree = 15,        // OBJECT_TYPE_BLOCKREFTREE
+    obj_type_snapmetatree = 16,        // OBJECT_TYPE_SNAPMETATREE
     obj_type_reaper = 0x11,            // OBJECT_TYPE_NX_REAPER
-    obj_type_reap_list = 0x12,        // OBJECT_TYPE_NX_REAP_LIST
-     obj_type_omap_snapshot = 0x13,    // OBJECT_TYPE_OMAP_SNAPSHOT
+    obj_type_reap_list = 0x12,         // OBJECT_TYPE_NX_REAP_LIST
+    obj_type_omap_snapshot = 0x13,     // OBJECT_TYPE_OMAP_SNAPSHOT
     obj_type_efi_jumpstart = 0x14,
     obj_type_fusion_middle_tree = 0x15,
     obj_type_nx_fusion_wbc = 0x16,
@@ -134,7 +134,7 @@ typedef enum <ushort> {
     obj_type_gbitmap = 0x19,
     obj_type_gbitmap_tree = 0x1a,
     obj_type_gbitmap_block = 0x1b,
-    obj_type_32_unknown = 0x20  /// THERE ARE MORE...
+    obj_type_32_unknown = 0x20  /// THERE ARE POSSIBLY MORE UNDOCUMENTED...
 } obj_type;
 
 #define OBJECT_TYPE_CONTAINER_KEYBAG 'keys'
@@ -215,11 +215,11 @@ typedef enum <uint32> {
 string ReadOmapFlags(omap_flag_type & f) {
   local string ret = "";
   SPrintf(ret, "(%d) ", f);
-  if (f & OMAP_MANUALLY_MANAGED) ret += "MANUALLY_MANAGED,";
-  if (f & OMAP_ENCRYPTING)    ret += "ENCRYPTING,";
-  if (f & OMAP_DECRYPTING)   ret += "DECRYPTING,";
-  if (f & OMAP_KEYROLLING)   ret += "KEYROLLING,";
-  if (f & OMAP_CRYPTO_GENERATION)   ret += "OMAP_CRYPTO_GENERATION,";
+  if (f & OMAP_MANUALLY_MANAGED)  ret += "MANUALLY_MANAGED,";
+  if (f & OMAP_ENCRYPTING)        ret += "ENCRYPTING,";
+  if (f & OMAP_DECRYPTING)        ret += "DECRYPTING,";
+  if (f & OMAP_KEYROLLING)        ret += "KEYROLLING,";
+  if (f & OMAP_CRYPTO_GENERATION) ret += "OMAP_CRYPTO_GENERATION,";
   if (Strcmp(ret[Strlen(ret)-1], ",") == 0)
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
@@ -1247,7 +1247,6 @@ typedef struct {
 } spaceman_free_queue_node_entry;
 
 typedef struct {
-  //local uint64 pos = FTell();
   short  key_offset;
 	if ((parentof(this).node_type & 4) == 0) // if not fixed size
     ushort key_length;
@@ -1726,7 +1725,6 @@ void DefineApfsContainer(uint64 apfs_offset) {
   
   
   SeekBlock(csb.body.xp_desc_base);
-  //obj checkpoint_desc_nx[csb.body.xp_desc_blocks] <optimize=false>;
   CheckpointDesc cp(csb.body.xp_desc_blocks);
   
   //SeekBlock(csb.body.xp_data_base);
