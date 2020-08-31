@@ -4,12 +4,14 @@
 //      File: APFS.bt
 //   Authors: Yogesh Khatri
 //    E-mail: yogesh@swiftforensics.com
-//   Version: 1.5
+//   Version: 1.7
 //   Purpose: Read APFS (Apple File System) structures
 //  Category: Drives
 // File Mask: 
 //  ID Bytes: 
 //   History: 
+//   1.7   2020-08-30 Yogesh Khatri: Add correct padding to keybag_entry structure
+//   1.6   2020-05-12 Yogesh Khatri: Fix minor bugs parsing XF, flags. Added container flags
 //   1.5   2020-05-02 Yogesh Khatri: Changed blocksize to uint64, fixes incorrect omap address calculation
 //   1.4   2020-02-21 Yogesh Khatri: Add to 010 repo
 //   1.4   2020-01-27 Yogesh Khatri: Read GPT partition, so no need to specify APFS start offset!
@@ -141,6 +143,21 @@ typedef enum <ushort> {
     obj_type_32_unknown = 0x20  /// THERE ARE POSSIBLY MORE UNDOCUMENTED...
 } obj_type;
 
+#define NX_RESERVED_1 1
+#define NX_RESERVED_2 2
+#define NX_CRYPTO_SW  4
+
+string ReadContainerFlags(uint64 & x) {
+  local string ret = "";
+  if      (x & NX_RESERVED_1) ret += "NX_RESERVED_1,";
+  else if (x & NX_RESERVED_2) ret += "NX_RESERVED_2,";
+  else if (x & NX_CRYPTO_SW)  ret += "NX_CRYPTO_SW";
+
+  if (ret != "" && Strcmp(ret[Strlen(ret)-1], ",") == 0)
+    ret = StrDel(ret, Strlen(ret)-1, 1);
+  return ret;
+}
+
 #define OBJECT_TYPE_CONTAINER_KEYBAG 'keys'
 #define OBJECT_TYPE_VOLUME_KEYBAG 'recs'
 
@@ -161,7 +178,7 @@ string ReadObjTypeFlags(uint16 & f) {
   if (x & OBJ_NOHEADER) ret += "OBJ_NOHEADER,";
   if (x & OBJ_ENCRYPTED)    ret += "OBJ_ENCRYPTED,";
   if (x & OBJ_NONPERSISTENT)    ret += "OBJ_NONPERSISTENT,";
-  if (Strcmp(ret[Strlen(ret)-1], ",") == 0)
+  if (ret != "" && Strcmp(ret[Strlen(ret)-1], ",") == 0)
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
 }
@@ -179,7 +196,7 @@ string ReadSpacemanFlags(uint32 & f) {
   local string ret = "";
   SPrintf(ret, "(%d) ", f);
   if (f & SM_FLAG_VERSIONED) ret += "VERSIONED,";
-  if (Strcmp(ret[Strlen(ret)-1], ",") == 0)
+  if (ret != "" && Strcmp(ret[Strlen(ret)-1], ",") == 0)
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
 }
@@ -203,7 +220,7 @@ string ReadBtreeTypeFlags(uint32 & x) {
   if (x & BTREE_PHYSICAL)      ret += "PHYSICAL,";
   if (x & BTREE_NONPERSISTENT) ret += "NONPERSISTENT,";
   if (x & BTREE_KV_NONALIGNED) ret += "KV_NONALIGNED,";
-  if (Strcmp(ret[Strlen(ret)-1], ",") == 0)
+  if (ret != "" && Strcmp(ret[Strlen(ret)-1], ",") == 0)
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
 }
@@ -224,7 +241,7 @@ string ReadOmapFlags(omap_flag_type & f) {
   if (f & OMAP_DECRYPTING)        ret += "DECRYPTING,";
   if (f & OMAP_KEYROLLING)        ret += "KEYROLLING,";
   if (f & OMAP_CRYPTO_GENERATION) ret += "OMAP_CRYPTO_GENERATION,";
-  if (Strcmp(ret[Strlen(ret)-1], ",") == 0)
+  if (ret != "" && Strcmp(ret[Strlen(ret)-1], ",") == 0)
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
 }
@@ -243,7 +260,7 @@ string ReadBtreeNodeFlags(btree_node_flags & f) {
   if (f & BTNODE_LEAF)    ret += "LEAF,";
   if (f & BTNODE_FIXED_KV_SIZE)   ret += "FIXED_KV_SIZE,";
   if (f & BTNODE_CHECK_KOFF_INVAL)   ret += "INVALID";
-  if (Strcmp(ret[Strlen(ret)-1], ",") == 0)
+  if (ret != "" && Strcmp(ret[Strlen(ret)-1], ",") == 0)
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
 }
@@ -273,7 +290,7 @@ string ReadVolRoleFlags(uint16 & f) {
   if (f & APFS_VOL_ROLE_DATA) ret+= "DATA,";
   if (f & APFS_VOL_ROLE_BASEBAND) ret+= "BASEBAND,";
   if (f & APFS_VOL_ROLE_RESERVED_200) ret+= "RESERVED_200,";
-  if (Strcmp(ret[Strlen(ret)-1], ",") == 0)
+  if (ret != "" && Strcmp(ret[Strlen(ret)-1], ",") == 0)
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
 }
@@ -286,7 +303,7 @@ string ReadSnapshotFlags(uint32 & f) {
   SPrintf(ret, "(%d) ", f);
   if (f & OMAP_SNAPSHOT_DELETED) ret += "DELETED,";
   if (f & OMAP_SNAPSHOT_REVERTED)    ret += "REVERTED,";
-  if (Strcmp(ret[Strlen(ret)-1], ",") == 0)
+  if (ret != "" && Strcmp(ret[Strlen(ret)-1], ",") == 0)
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
 }
@@ -306,7 +323,7 @@ string ReadOmapValFlags(uint32 & f) {
   if (f & OMAP_VAL_ENCRYPTED)   ret += "ENCRYPTED,";
   if (f & OMAP_VAL_NOHEADER)   ret += "NOHEADER";
   if (f & OMAP_VAL_CRYPTO_GENERATION)   ret += "CRYPTO_GENERATION";
-  if (Strcmp(ret[Strlen(ret)-1], ",") == 0)
+  if (ret != "" && Strcmp(ret[Strlen(ret)-1], ",") == 0)
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
 }
@@ -317,7 +334,7 @@ string ReadCheckpointFlags(uint32 & f) {
   local string ret = "";
   SPrintf(ret, "(%d) ", f);
   if (f & CHECKPOINT_MAP_LAST) ret += "LAST,";
-  if (Strcmp(ret[Strlen(ret)-1], ",") == 0)
+  if (ret != "" && Strcmp(ret[Strlen(ret)-1], ",") == 0)
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
 }
@@ -343,7 +360,7 @@ string ReadXFlags(ubyte & f) {
   if (f & XF_SYSTEM_FIELD)   ret += "SYSTEM_FIELD";
   if (f & XF_RESERVED_40)   ret += "RESERVED_40";
   if (f & XF_RESERVED_80)   ret += "RESERVED_80";
-  if (Strcmp(ret[Strlen(ret)-1], ",") == 0)
+  if (ret != "" && Strcmp(ret[Strlen(ret)-1], ",") == 0)
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
 }
@@ -355,7 +372,7 @@ string ReadSnapMetaFlags(uint32 & f) {
   local string ret = "";
   SPrintf(ret, "(%d) ", f);
   if (f & SNAP_META_PENDING_DATALESS) ret += "PENDING_DATALESS,";
-  if (Strcmp(ret[Strlen(ret)-1], ",") == 0)
+  if (ret != "" && Strcmp(ret[Strlen(ret)-1], ",") == 0)
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
 }
@@ -376,7 +393,7 @@ string ReadFeatures(vol_features & f) {
   if (f & feature_defrag_prerelease) ret += "defrag_prerelease,";
   if (f & feature_hardlink_map_records)    ret += "hardlink_map_records,";
   if (f & feature_defrag)   ret += "defrag,";
-  if (Strcmp(ret[Strlen(ret)-1], ",") == 0)
+  if (ret != "" && Strcmp(ret[Strlen(ret)-1], ",") == 0)
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
 }
@@ -395,7 +412,7 @@ string ReadIncompatFeatures(vol_incompatible_features & f) {
   if (f & incompat_dataless_snaps)   ret += "dataless_snaps,";
   if (f & incompat_enc_rolled)       ret += "enc_rolled,";
   if (f & incompat_normalization_insensitive)   ret += "normalization_insensitive,";
-  if (Strcmp(ret[Strlen(ret)-1], ",") == 0)
+  if (ret != "" && Strcmp(ret[Strlen(ret)-1], ",") == 0)
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
 }
@@ -418,7 +435,7 @@ string ReadVolFlags(volume_flags & e) {
   if (e & fs_onekey)      ret += "onekey,";
   if (e & fs_spilledover) ret += "spilledover,";
   if (e & fs_run_spillover_cleaner) ret += "run_spillover_cleaner,";
-  if (Strcmp(ret[Strlen(ret)-1], ",") == 0)
+  if (ret != "" && Strcmp(ret[Strlen(ret)-1], ",") == 0)
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
 }
@@ -795,7 +812,7 @@ typedef struct {
     uint64 blocked_out_start_paddr;
     int64  blocked_out_block_count;
     uint64 evict_mapping_tree_oid;
-    uint64 flags;
+    uint64 flags <read=ReadContainerFlags>;
     uint64 efi_jumpstart <format=hex>;
     Uuid   fusion_uuid;
     uint64 keylocker_paddr;
@@ -1048,7 +1065,7 @@ typedef struct {  // 0x30
         case xfield_type_delta_tree_oid: uint64 x_oid; break;
         case xfield_type_prev_fsize: uint64 x_prev_size; break;
         case xfield_type_finder_info: uint32 x_finderdata; break;
-        case xfield_type_dir_stats_key: dir_stats_val x_dir_stats; break;
+        case xfield_type_dir_stats_key: uint64 x_dir_stats_key; break;
         case xfield_type_fs_uuid: Uuid x_uuid; break;
 			  default: {
           byte xf_data[xf_hdr[_index].length];
@@ -1105,7 +1122,7 @@ typedef struct { // 0x90
         case xfield_type_delta_tree_oid: uint64 x_oid; break;
         case xfield_type_prev_fsize: uint64 x_prev_size; break;
         case xfield_type_finder_info: uint32 x_finderdata; break;
-        case xfield_type_dir_stats_key: dir_stats_val x_dir_stats; break;
+        case xfield_type_dir_stats_key: uint64 x_dir_stats_key; break;
         case xfield_type_fs_uuid: Uuid x_uuid; break;
 			  default: {
           byte xf_data[xf_hdr[_index].length];
@@ -1700,6 +1717,7 @@ void BookmarkVolumes(obj & csb) {
     vol_name = csb.body.omap.body.tree.body.entries[i].val.omap.body.volname;
     Printf("\nVol name = %s", vol_name);
     SeekBlock(csb.body.omap.body.tree.body.entries[i].val.paddr);
+    //Printf(", Paddr(block num) = 0x%LX, pos = 0x%LX", csb.body.omap.body.tree.body.entries[i].val.paddr, FTell());
     obj vol <comment=GetVolName>;
   }
 }
