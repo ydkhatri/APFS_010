@@ -568,6 +568,8 @@ typedef struct {
   uint16 ke_keylen;
   byte   padding[4];
   byte   ke_keydata[ke_keylen];
+  if ((ke_keylen + 8) % 16)
+    byte   padding2[16 - ((ke_keylen + 8) % 16) ]; // align to 16 byte boundary
 } keybag_entry;
 
 typedef struct {
@@ -575,7 +577,7 @@ typedef struct {
   uint16 kl_nkeys;
   uint32 kl_nbytes;
   byte   padding[8];
-  keybag_entry kl_entries[kl_nkeys];
+  keybag_entry kl_entries[kl_nkeys] <optimize=false>;
 } kb_locker;
 
 typedef struct media_keybag {
