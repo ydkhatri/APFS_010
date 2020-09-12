@@ -4,12 +4,13 @@
 //      File: APFS.bt
 //   Authors: Yogesh Khatri
 //    E-mail: yogesh@swiftforensics.com
-//   Version: 1.7
+//   Version: 1.8
 //   Purpose: Read APFS (Apple File System) structures
 //  Category: Drives
 // File Mask: 
 //  ID Bytes: 
 //   History: 
+//   1.8   2020-09-09 Yogesh Khatri: Add new items as per Apple spec 2020-06-22, support for sealed volumes
 //   1.7   2020-08-30 Yogesh Khatri: Add correct padding to keybag_entry structure
 //   1.6   2020-05-12 Yogesh Khatri: Fix minor bugs parsing XF, flags. Added container flags
 //   1.5   2020-05-02 Yogesh Khatri: Changed blocksize to uint64, fixes incorrect omap address calculation
@@ -77,6 +78,8 @@ local uint64 Current_Block_Offset = 0;
 
 //forward declarations
 struct obj;
+struct obj_header;
+struct node;
 int SeekBlock(uint64 block_id);
 
 uint64 fletcher64(uint64 addr, uint64 len)
@@ -140,7 +143,12 @@ typedef enum <ushort> {
     obj_type_gbitmap = 0x19,
     obj_type_gbitmap_tree = 0x1a,
     obj_type_gbitmap_block = 0x1b,
-    obj_type_32_unknown = 0x20  /// THERE ARE POSSIBLY MORE UNDOCUMENTED...
+    // new in 2020-06-22
+    obj_type_er_recovery_block = 0x1c,
+    obj_type_snap_meta_ext = 0x1d,
+    obj_type_integrity_meta = 0x1e,
+    obj_type_fext_tree = 0x1f,
+    obj_type_reserved = 0x20
 } obj_type;
 
 #define NX_RESERVED_1 1
@@ -186,7 +194,8 @@ string ReadObjTypeFlags(uint16 & f) {
 string ReadTreeType(uint32 & f) {
   local uint16 x = f >> 16;
   local uint16 p = f;
-  local string ret = ReadObjTypeFlags(x);// + " | " + EnumToString(p);
+  local obj_type o = p;
+  local string ret = ReadObjTypeFlags(x) + " | " + EnumToString(o);
   return ret;
 }
 
@@ -209,6 +218,8 @@ string ReadSpacemanFlags(uint32 & f) {
 #define BTREE_PHYSICAL 0x00000010
 #define BTREE_NONPERSISTENT 0x00000020
 #define BTREE_KV_NONALIGNED 0x00000040
+#define BTREE_HASHED 0x00000080
+#define BTREE_NOHEADER 0x00000100
 
 string ReadBtreeTypeFlags(uint32 & x) {
   local string ret = "";
@@ -220,6 +231,8 @@ string ReadBtreeTypeFlags(uint32 & x) {
   if (x & BTREE_PHYSICAL)      ret += "PHYSICAL,";
   if (x & BTREE_NONPERSISTENT) ret += "NONPERSISTENT,";
   if (x & BTREE_KV_NONALIGNED) ret += "KV_NONALIGNED,";
+  if (x & BTREE_HASHED)        ret += "HASHED,";
+  if (x & BTREE_NOHEADER)      ret += "NOHEADER,";
   if (ret != "" && Strcmp(ret[Strlen(ret)-1], ",") == 0)
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
@@ -250,22 +263,28 @@ typedef enum <uint16> {
     BTNODE_ROOT = 1, 
     BTNODE_LEAF = 2,
     BTNODE_FIXED_KV_SIZE = 4,
+    BTNODE_HASHED = 8,
+    BTNODE_NOHEADER = 0x10,
     BTNODE_CHECK_KOFF_INVAL = 0x8000
 } btree_node_flags <read=ReadBtreeNodeFlags>;
 
 string ReadBtreeNodeFlags(btree_node_flags & f) {
   local string ret = "";
   SPrintf(ret, "(%d) ", f);
-  if (f & BTNODE_ROOT) ret += "ROOT,";
-  if (f & BTNODE_LEAF)    ret += "LEAF,";
-  if (f & BTNODE_FIXED_KV_SIZE)   ret += "FIXED_KV_SIZE,";
-  if (f & BTNODE_CHECK_KOFF_INVAL)   ret += "INVALID";
+  if (f & BTNODE_ROOT) ret += "BTNODE_ROOT,";
+  if (f & BTNODE_LEAF)    ret += "BTNODE_LEAF,";
+  if (f & BTNODE_FIXED_KV_SIZE)   ret += "BTNODE_FIXED_KV_SIZE,";
+  if (f & BTNODE_HASHED)   ret += "BTNODE_HASHED,";
+  if (f & BTNODE_NOHEADER)   ret += "BTNODE_NOHEADER,";
+  if (f & BTNODE_CHECK_KOFF_INVAL)   ret += "BTNODE_INVALID";
   if (ret != "" && Strcmp(ret[Strlen(ret)-1], ",") == 0)
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
 }
 
 //VOLUME ROLE FLAGS
+#define APFS_VOLUME_ENUM_SHIFT  6
+
 #define APFS_VOL_ROLE_NONE      0x0000
 #define APFS_VOL_ROLE_SYSTEM    0x0001
 #define APFS_VOL_ROLE_USER      0x0002
@@ -273,9 +292,17 @@ string ReadBtreeNodeFlags(btree_node_flags & f) {
 #define APFS_VOL_ROLE_VM        0x0008
 #define APFS_VOL_ROLE_PREBOOT   0x0010
 #define APFS_VOL_ROLE_INSTALLER 0x0020
-#define APFS_VOL_ROLE_DATA      0x0040
-#define APFS_VOL_ROLE_BASEBAND  0x0080
-#define APFS_VOL_ROLE_RESERVED_200 0x0200
+#define APFS_VOL_ROLE_DATA       (1 << APFS_VOLUME_ENUM_SHIFT)
+#define APFS_VOL_ROLE_BASEBAND   (2 << APFS_VOLUME_ENUM_SHIFT)
+#define APFS_VOL_ROLE_UPDATE     (3 << APFS_VOLUME_ENUM_SHIFT)
+#define APFS_VOL_ROLE_XART       (4 << APFS_VOLUME_ENUM_SHIFT)
+#define APFS_VOL_ROLE_HARDWARE   (5 << APFS_VOLUME_ENUM_SHIFT)
+#define APFS_VOL_ROLE_BACKUP     (6 << APFS_VOLUME_ENUM_SHIFT)
+#define APFS_VOL_ROLE_RESERVED_7 (7 << APFS_VOLUME_ENUM_SHIFT)
+#define APFS_VOL_ROLE_RESERVED_8 (8 << APFS_VOLUME_ENUM_SHIFT)
+#define APFS_VOL_ROLE_ENTERPRISE (9 << APFS_VOLUME_ENUM_SHIFT)
+#define APFS_VOL_ROLE_RESERVED_10 (10 << APFS_VOLUME_ENUM_SHIFT)
+#define APFS_VOL_ROLE_PRELOGIN    (11 << APFS_VOLUME_ENUM_SHIFT)
 
 string ReadVolRoleFlags(uint16 & f) {
   local string ret = "";
@@ -289,7 +316,15 @@ string ReadVolRoleFlags(uint16 & f) {
   if (f & APFS_VOL_ROLE_INSTALLER) ret+= "INSTALLER,";
   if (f & APFS_VOL_ROLE_DATA) ret+= "DATA,";
   if (f & APFS_VOL_ROLE_BASEBAND) ret+= "BASEBAND,";
-  if (f & APFS_VOL_ROLE_RESERVED_200) ret+= "RESERVED_200,";
+  if (f & APFS_VOL_ROLE_UPDATE) ret+= "UPDATE,";
+  if (f & APFS_VOL_ROLE_XART) ret+= "XART,";
+  if (f & APFS_VOL_ROLE_HARDWARE) ret+= "HARDWARE,";
+  if (f & APFS_VOL_ROLE_BACKUP) ret+= "BACKUP,";
+  if (f & APFS_VOL_ROLE_RESERVED_7) ret+= "RESERVED_7,";
+  if (f & APFS_VOL_ROLE_RESERVED_8) ret+= "RESERVED_8,";
+  if (f & APFS_VOL_ROLE_ENTERPRISE) ret+= "ENTERPRISE,";
+  if (f & APFS_VOL_ROLE_RESERVED_10) ret+= "RESERVED_10,";
+  if (f & APFS_VOL_ROLE_PRELOGIN) ret+= "PRELOGIN,";
   if (ret != "" && Strcmp(ret[Strlen(ret)-1], ",") == 0)
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
@@ -402,7 +437,9 @@ typedef enum <uint64> {
     incompat_case_insensitive = 1,
     incompat_dataless_snaps = 2,
     incompat_enc_rolled = 4,
-    incompat_normalization_insensitive = 8 
+    incompat_normalization_insensitive = 8,
+    incompat_incomplete_restore = 0x10,
+    incompat_sealed_volume = 0x20
 } vol_incompatible_features <read=ReadIncompatFeatures>;
 
 string ReadIncompatFeatures(vol_incompatible_features & f) {
@@ -412,6 +449,8 @@ string ReadIncompatFeatures(vol_incompatible_features & f) {
   if (f & incompat_dataless_snaps)   ret += "dataless_snaps,";
   if (f & incompat_enc_rolled)       ret += "enc_rolled,";
   if (f & incompat_normalization_insensitive)   ret += "normalization_insensitive,";
+  if (f & incompat_incomplete_restore)   ret += "incomplete_restore,";
+  if (f & incompat_sealed_volume)   ret += "sealed_volume,";
   if (ret != "" && Strcmp(ret[Strlen(ret)-1], ",") == 0)
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
@@ -423,7 +462,8 @@ typedef enum <uint64> {
   fs_reserved_4 = 4,
   fs_onekey = 8,
   fs_spilledover = 0x10,
-  fs_run_spillover_cleaner = 0x20
+  fs_run_spillover_cleaner = 0x20,
+  fs_always_check_extentref = 0x40
 } volume_flags <read=ReadVolFlags>;
 
 string ReadVolFlags(volume_flags & e) {
@@ -435,6 +475,7 @@ string ReadVolFlags(volume_flags & e) {
   if (e & fs_onekey)      ret += "onekey,";
   if (e & fs_spilledover) ret += "spilledover,";
   if (e & fs_run_spillover_cleaner) ret += "run_spillover_cleaner,";
+  if (e & fs_always_check_extentref) ret += "always_check_extentref,";
   if (ret != "" && Strcmp(ret[Strlen(ret)-1], ",") == 0)
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
@@ -473,8 +514,8 @@ typedef enum <uint> {
     kind_dir_stats = 0xa,
     kind_snap_name = 0xb,
     kind_sibling_map = 0xc,
-    kind_unknown_d = 0xd
-} kind;
+    kind_file_info = 0xd // new 2020-06-22, for storing file hash 
+} kind; // j_obj_types
 
 
 string ReadKind(uint k) {
@@ -493,6 +534,7 @@ string ReadKind(uint k) {
     case kind_dir_stats: return "kind_dir_stats (10)"; break;
     case kind_snap_name: return "kind_snap_name (11)"; break;
     case kind_sibling_map: return "kind_sibling_map (12)"; break;
+    case kind_file_info: return "kind_file_info (13)"; break;
     default: { 
       Sprintf(ret, "%s (%d)",  "Unknown", k);
       return ret;
@@ -982,20 +1024,27 @@ typedef struct { // ???
 } history_val;
 
 typedef struct {  // 0x00
-    uint flags <read=ReadOmapValFlags>;
-    uint size;
-    //ref_obj paddr; //inlined
-    //// BEGIN ref_obj
-    local uint64 rpos = FTell();
-    uint64 paddr;
-    if (paddr == 0)
-        Printf("\n%s\n", "paddr was 0 in obj_ref!! Not defining omap!!");
-    else if (SeekBlock(paddr) != 0) // outside disk image!
-        Printf("\n%s\n", "paddr invalid in obj_ref!! Not defining omap!!"); 
+  uint flags <read=ReadOmapValFlags>;
+  uint size;
+  //ref_obj paddr; //inlined
+  //// BEGIN ref_obj
+  local uint64 rpos = FTell();
+  uint64 paddr;
+  if (paddr == 0)
+    Printf("\n%s\n", "paddr was 0 in obj_ref!! Not defining omap!!");
+  else if (SeekBlock(paddr) != 0) // outside disk image!
+    Printf("\n%s\n", "paddr invalid in obj_ref!! Not defining omap!!"); 
+  else {
+    if ((flags & OMAP_VAL_NOHEADER) == OMAP_VAL_NOHEADER) {
+      local uint64 obj_start_off = FTell();
+      obj_header hdr; // will be zeroed out!
+      node body;
+    }
     else
-        obj omap;
-    FSeek(rpos + 8);
-    //// END ref_obj
+      obj omap;
+  }
+  FSeek(rpos + 8);
+  //// END ref_obj
 } omap_val;
 
 typedef struct {  
@@ -1130,7 +1179,7 @@ typedef struct { // 0x90
         }
 		  }
       if 	(((8 - xf_hdr[_index].length) % 8) > 0)
-        FSkip( (8 - xf_hdr[_index].length) % 8 );//byte padding[((8 - xf_hdr[_index].length) % 8)];
+        FSkip( (8 - xf_hdr[_index].length) % 8 );
     }
   }
 } drec_val;
@@ -1163,6 +1212,35 @@ typedef struct {
   uint64 paddr;
 } spaceman_free_queue_key;
 
+typedef struct { 
+  //j_key_t     hdr;
+  uint64 lba: 56;
+  uint64 info: 8; //APFS_FILE_INFO_DATA_HASH = 1
+} file_info_key;
+
+typedef struct {
+  uint16    hashed_len; 
+  ubyte     hash_size;
+  ubyte     hash[hash_size];
+} file_data_hash_val;
+
+typedef struct {
+  //union {
+    file_data_hash_val  dhash;
+  //};
+} file_info_val;
+
+typedef struct {
+  uint64 private_id;
+  uint64 logical_addr;
+} fext_tree_key;
+
+typedef struct { 
+  uint64 len:56;
+  uint64 flags:8; // currently no flags defined
+  uint64 phys_block_num;
+} fext_tree_val;
+
 //// node entries
 typedef struct {
   local uint64 pos = FTell();
@@ -1190,6 +1268,7 @@ typedef struct {
     case kind_sibling_map: /*empty_key key;*/ break;
     case kind_snap_name: snap_name_key key; break;
     case kind_dir_stats: break;
+    case kind_file_info: file_info_key key; break;
     default: Printf("\nKey type not seen 0x%X", key_header.kind_0); break;
   }
   
@@ -1205,7 +1284,8 @@ typedef struct {
           key_header.kind_0 == kind_xattr || 
           key_header.kind_0 == kind_inode ||
           key_header.kind_0 == kind_sibling_link ||
-          key_header.kind_0 == kind_sibling_map) {
+          key_header.kind_0 == kind_sibling_map ||
+          key_header.kind_0 == kind_file_info) {
           Printf("\nIn non-leaf node, got kind 0x%X %s, treetype=%s", key_header.kind_0, ReadKind(key_header.kind_0), EnumToString(parentof(parentof(this)).hdr.subtype)); // for debug
           uint64 val <bgcolor=cLtGreen>;
       }
@@ -1245,6 +1325,7 @@ typedef struct {
     case kind_sibling_map: sibling_map_val val; break;
     case kind_snap_name: snap_name_val val; break;
     case kind_snap_metadata: snap_metadata_val val; break;
+    case kind_file_info: file_info_val val; break;
   }
   FSeek(pos2);
 } node_entry;
@@ -1307,6 +1388,26 @@ typedef struct {
     
 } omap_node_entry;
 
+typedef struct {
+  //local uint64 pos = FTell();
+  short key_offset;
+	if ((parentof(this).node_type & 4) == 0) // if not fixed size
+    ushort key_length;
+  short  data_offset;
+	if ((parentof(this).node_type & 4) == 0)
+    ushort data_length;
+  local uint64 pos2 = FTell();
+
+  FSeek(parentof(parentof(this)).obj_start_off + key_offset + parentof(this).table_space_len + 56); //key_hdr
+  fext_tree_key key_header <bgcolor=cRed>;
+  
+  if (data_offset != 0xFFFF) {
+    FSeek(parentof(parentof(this)).obj_start_off + Block_Size - data_offset - 40 * (parentof(this).node_type & 1)); // val
+    fext_tree_val val;
+  }  
+  FSeek(pos2);
+} fext_node_entry;
+
 // node (type: 0x02)
 typedef struct {
     local uint64 pos = FTell();
@@ -1329,6 +1430,15 @@ typedef struct {
           break;
         case obj_type_spaceman_free_queue:
           spaceman_free_queue_node_entry entries[entry_count] <optimize=false>;
+          break;
+        case obj_type_fext_tree:
+          if (level > 0)
+            omap_node_entry entries[entry_count] <optimize=false>;
+          else
+            fext_node_entry entries[entry_count] <optimize=false>;
+          break;
+        case 0: // in case of NOHEADER flag, value will be 0
+          node_entry entries[entry_count] <optimize=false>;
           break;
         default:
           Printf("\nNode subtype=%s, in btree ", EnumToString(parentof(this).hdr.subtype));
@@ -1625,8 +1735,29 @@ typedef struct {
     uint32 next_doc_id;
     uint16 apfs_role <read=ReadVolRoleFlags>;
     uint16 reserved;
-    uint64  apfs_root_to_xid; // for later
-    uint64  apfs_er_state_oid; // for later
+    uint64 apfs_root_to_xid; // for later
+    uint64 apfs_er_state_oid; // for later
+    //new from 2020-06-22 spec 
+    uint64 cloneinfo_id_epoch;
+    uint64 cloneinfo_xid;   
+    uint64 snap_meta_ext_oid;
+    Uuid   volume_group_id;
+    uint64 integrity_meta_oid;
+    //uint64 fext_tree_oid; //inlined
+    //// BEGIN ref_obj
+    rpos = FTell();
+    uint64 fext_tree_oid;
+    if (fext_tree_oid == 0)
+        Printf("\n%s\n", "fext_tree_oid was 0 in obj_ref!! Not defining fext_tree!!");
+    else if (SeekBlock(fext_tree_oid) != 0) // outside disk image!
+        Printf("\n%s\n", "fext_tree_oid invalid in obj_ref!! Not defining fext_tree!!"); 
+    else
+        obj fext_tree;
+    FSeek(rpos + 8);
+    //// END ref_obj
+    uint32 fext_tree_type <read=ReadTreeType>;
+    uint32 reserved_type <read=ReadTreeType>;
+    uint64 reserved_oid;
 } apfs_superblock;
 
 typedef struct {
@@ -1674,7 +1805,7 @@ typedef struct {
     case obj_type_efi_jumpstart: efi_jumpstart_t body; break;
     case obj_type_er_state: er_state_phys body; break;
     //case obj_type_checkpoint_map: Printf("\ncheckpoint_map type 0x%X @ 0x%LX", hdr.type, obj_start_off); break;
-    case obj_type_32_unknown: Printf("\nType 32 obj header type 0x%X @ 0x%LX", hdr.type, obj_start_off); break;
+    case obj_type_reserved: Printf("\nType 32 obj header type 0x%X @ 0x%LX", hdr.type, obj_start_off); break;
 		default: Printf("\nUnknown obj header type 0x%X @ 0x%LX", hdr.type, obj_start_off); /*Exit(3);*/ break; 
   }
   FSeek(obj_start_off + Block_Size);
