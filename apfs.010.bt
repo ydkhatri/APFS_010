@@ -1375,6 +1375,7 @@ typedef struct {
     case kind_snap_name: snap_name_key key; break;
     case kind_dir_stats: break;
     case kind_file_info: file_info_key key; break;
+    case kind_snap_metadata:  break;
     default: Printf("\nKey type not seen 0x%X", key_header.kind_0); break;
   }
   
