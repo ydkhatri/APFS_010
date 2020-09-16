@@ -1,15 +1,17 @@
 //------------------------------------------------
 //--- 010 Editor v8.0.1 Binary Template
 //
-//      File: APFS.bt
+//      File: apfs.bt
 //   Authors: Yogesh Khatri
 //    E-mail: yogesh@swiftforensics.com
-//   Version: 1.8
+//   Version: 1.10
 //   Purpose: Read APFS (Apple File System) structures
 //  Category: Drives
 // File Mask: 
 //  ID Bytes: 
-//   History: 
+//   History:
+//   1.10  2020-09-16 Yogesh Khatri: Change pad2 to uncompressed_size in inode struct, (used by macOS 10.15+), add inode flags
+//   1.9   2020-09-15 Yogesh Khatri: Add hash types, snap_meta_ext & integrity_meta structures 
 //   1.8   2020-09-09 Yogesh Khatri: Add new items as per Apple spec 2020-06-22, support for sealed volumes
 //   1.7   2020-08-30 Yogesh Khatri: Add correct padding to keybag_entry structure
 //   1.6   2020-05-12 Yogesh Khatri: Fix minor bugs parsing XF, flags. Added container flags
@@ -329,6 +331,92 @@ string ReadVolRoleFlags(uint16 & f) {
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
 }
+
+// Inode flags (j_inode_flags)
+typedef enum<uint64> {
+  INODE_IS_APFS_PRIVATE = 0x00000001,
+  INODE_MAINTAIN_DIR_STATS = 0x00000002,
+  INODE_DIR_STATS_ORIGIN = 0x00000004,
+  INODE_PROT_CLASS_EXPLICIT = 0x00000008,
+  INODE_WAS_CLONED = 0x00000010,
+  INODE_FLAG_UNUSED = 0x00000020,
+  INODE_HAS_SECURITY_EA = 0x00000040,
+  INODE_BEING_TRUNCATED = 0x00000080,
+  INODE_HAS_FINDER_INFO = 0x00000100,
+  INODE_IS_SPARSE = 0x00000200,
+  INODE_WAS_EVER_CLONED = 0x00000400,
+  INODE_ACTIVE_FILE_TRIMMED = 0x00000800,
+  INODE_PINNED_TO_MAIN = 0x00001000,
+  INODE_PINNED_TO_TIER2 = 0x00002000,
+  INODE_HAS_RSRC_FORK = 0x00004000,
+  INODE_NO_RSRC_FORK = 0x00008000,
+  INODE_ALLOCATION_SPILLEDOVER = 0x00010000,
+  INODE_FAST_PROMOTE = 0x00020000,
+  INODE_HAS_UNCOMPRESSED_SIZE = 0x00040000,
+  INODE_IS_PURGEABLE = 0x00080000,
+  INODE_WANTS_TO_BE_PURGEABLE = 0x00100000,
+  INODE_IS_SYNC_ROOT = 0x00200000,
+  INODE_SNAPSHOT_COW_EXEMPTION = 0x00400000,
+
+  INODE_INHERITED_INTERNAL_FLAGS = (INODE_MAINTAIN_DIR_STATS | INODE_SNAPSHOT_COW_EXEMPTION),
+  INODE_CLONED_INTERNAL_FLAGS = (INODE_HAS_RSRC_FORK | INODE_NO_RSRC_FORK | INODE_HAS_FINDER_INFO | INODE_SNAPSHOT_COW_EXEMPTION),
+} inode_flags;
+
+#define APFS_VALID_INTERNAL_INODE_FLAGS ( INODE_IS_APFS_PRIVATE \
+                                        | INODE_MAINTAIN_DIR_STATS \
+                                        | INODE_DIR_STATS_ORIGIN \
+                                        | INODE_PROT_CLASS_EXPLICIT \
+                                        | INODE_WAS_CLONED \
+                                        | INODE_HAS_SECURITY_EA \
+                                        | INODE_BEING_TRUNCATED \
+                                        | INODE_HAS_FINDER_INFO \
+                                        | INODE_IS_SPARSE \
+                                        | INODE_WAS_EVER_CLONED \
+                                        | INODE_ACTIVE_FILE_TRIMMED \
+                                        | INODE_PINNED_TO_MAIN \
+                                        | INODE_PINNED_TO_TIER2 \
+                                        | INODE_HAS_RSRC_FORK \
+                                        | INODE_NO_RSRC_FORK \
+                                        | INODE_ALLOCATION_SPILLEDOVER \
+                                        | INODE_FAST_PROMOTE \
+                                        | INODE_HAS_UNCOMPRESSED_SIZE \
+                                        | INODE_IS_PURGEABLE \
+                                        | INODE_WANTS_TO_BE_PURGEABLE \
+                                        | INODE_IS_SYNC_ROOT \
+                                        | INODE_SNAPSHOT_COW_EXEMPTION)
+#define APFS_INODE_PINNED_MASK (INODE_PINNED_TO_MAIN | INODE_PINNED_TO_TIER2)
+
+string ReadInodeFlags(uint64 & f) {
+  local string ret = "";
+  SPrintf(ret, "(0x%LX) ", f);
+  if (f & INODE_IS_APFS_PRIVATE) ret += "IS_APFS_PRIVATE,";
+  if (f & INODE_MAINTAIN_DIR_STATS) ret += "MAINTAIN_DIR_STATS,";
+  if (f & INODE_DIR_STATS_ORIGIN) ret += "DIR_STATS_ORIGIN,";
+  if (f & INODE_PROT_CLASS_EXPLICIT) ret += "PROT_CLASS_EXPLICIT,";
+  if (f & INODE_WAS_CLONED) ret += "WAS_CLONE,";
+  if (f & INODE_FLAG_UNUSED) ret += "FLAG_UNUSED,";
+  if (f & INODE_HAS_SECURITY_EA) ret += "HAS_SECURITY_EA,";
+  if (f & INODE_BEING_TRUNCATED) ret += "BEING_TRUNCATE,";
+  if (f & INODE_HAS_FINDER_INFO) ret += "HAS_FINDER_INFO,";
+  if (f & INODE_IS_SPARSE) ret += "IS_SPARSE,";
+  if (f & INODE_WAS_EVER_CLONED) ret += "WAS_EVER_CLONED,";
+  if (f & INODE_ACTIVE_FILE_TRIMMED) ret += "ACTIVE_FILE_TRIMMED,";
+  if (f & INODE_PINNED_TO_MAIN) ret += "PINNED_TO_MAIN,";
+  if (f & INODE_PINNED_TO_TIER2) ret += "PINNED_TO_TIER2,";
+  if (f & INODE_HAS_RSRC_FORK) ret += "HAS_RSRC_FORK,";
+  if (f & INODE_NO_RSRC_FORK) ret += "NO_RSRC_FORK,";
+  if (f & INODE_ALLOCATION_SPILLEDOVER) ret += "ALLOCATION_SPILLEDOVER,";
+  if (f & INODE_FAST_PROMOTE) ret += "FAST_PROMOTE,";
+  if (f & INODE_HAS_UNCOMPRESSED_SIZE) ret += "HAS_UNCOMPRESSED_SIZE,";
+  if (f & INODE_IS_PURGEABLE) ret += "IS_PURGEABLE,";
+  if (f & INODE_WANTS_TO_BE_PURGEABLE) ret += "WANTS_TO_BE_PURGEABLE,";
+  if (f & INODE_IS_SYNC_ROOT) ret += "IS_SYNC_ROOT,";
+  if (f & INODE_SNAPSHOT_COW_EXEMPTION) ret += "SNAPSHOT_COW_EXEMPTION,";
+  if (ret != "" && Strcmp(ret[Strlen(ret)-1], ",") == 0)
+    ret = StrDel(ret, Strlen(ret)-1, 1);
+  return ret;
+}
+
 // Snapshot flags
 #define OMAP_SNAPSHOT_DELETED 0x00000001
 #define OMAP_SNAPSHOT_REVERTED 0x00000002
@@ -432,6 +520,24 @@ string ReadFeatures(vol_features & f) {
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
 }
+
+//hash related
+typedef enum <uint32> {
+  APFS_HASH_INVALID                = 0,
+  APFS_HASH_SHA256                 = 0x1,
+  APFS_HASH_SHA512_256             = 0x2,
+  APFS_HASH_SHA384                 = 0x3,
+  APFS_HASH_SHA512                 = 0x4,
+  APFS_HASH_MIN                    = APFS_HASH_SHA256,
+  APFS_HASH_MAX                    = APFS_HASH_SHA512,
+  APFS_HASH_DEFAULT                = APFS_HASH_SHA256,
+} apfs_hash_type;
+
+#define APFS_HASH_CCSHA256_SIZE 32
+#define APFS_HASH_CCSHA512_256_SIZE 32
+#define APFS_HASH_CCSHA384_SIZE 48
+#define APFS_HASH_CCSHA512_SIZE 64
+#define APFS_HASH_MAX_SIZE 64
 
 typedef enum <uint64> {
     incompat_case_insensitive = 1,
@@ -1088,7 +1194,7 @@ typedef struct {  // 0x30
   int64  modified_timestamp <read=ApfsTimeRead>;
   int64  changed_timestamp <read=ApfsTimeRead>;
   int64  accessed_timestamp <read=ApfsTimeRead>;
-  uint64 flags;
+  uint64 internal_flags <read=ReadInodeFlags>;
   uint   nchildren_or_nlink;
   uint   default_protection_class; // cp_key_class_t
   uint   write_generation_counter; // incremented each time this inode or its data is modified
@@ -1097,7 +1203,7 @@ typedef struct {  // 0x30
   uint   group_id;
   ushort mode <format=octal>;
   ushort pad1;
-  uint64 pad2;
+  uint64 uncompressed_size; // 10.15+, only populated if flags has INODE_HAS_UNCOMPRESSED_SIZE bit set
   if (parentof(this).data_length != 92) { // then extended fields exist!
     ushort xf_num_exts; // File 0x02 or Folder 0x01 cmp. TN1150
     ushort xf_used_data;
@@ -1769,12 +1875,29 @@ typedef struct {
   prange nej_rec_extents[nej_num_extents];
 } efi_jumpstart_t; // Had to use _t due to 010 bug (name clash issue!)
 
-
 typedef struct {
     uint64 unknown0;
     uint64 unknown8;
     uint64 unknowns[10];
 } reaper;
+
+typedef struct {
+  uint32      sme_version;
+  uint32      sme_flags;
+  uint64      sme_snap_xid;
+  Uuid        sme_uuid;
+  uint64      sme_token;
+} snap_meta_ext;
+
+typedef struct {
+  uint32             im_version;
+  uint32             im_flags;
+  apfs_hash_type     im_hash_type;
+  uint32             im_root_hash_offset;
+  uint64             im_broken_xid;
+  uint64             im_reserved[9];
+} integrity_meta_phys;
+
 
 typedef struct {
     uint64 cksum; // Flechters checksum, according to the docs.
@@ -1804,6 +1927,8 @@ typedef struct {
     case obj_type_omap_snapshot: omap_snapshot body; break;
     case obj_type_efi_jumpstart: efi_jumpstart_t body; break;
     case obj_type_er_state: er_state_phys body; break;
+    case obj_type_snap_meta_ext: snap_meta_ext body; break;
+    case obj_type_integrity_meta: integrity_meta_phys body; break;
     //case obj_type_checkpoint_map: Printf("\ncheckpoint_map type 0x%X @ 0x%LX", hdr.type, obj_start_off); break;
     case obj_type_reserved: Printf("\nType 32 obj header type 0x%X @ 0x%LX", hdr.type, obj_start_off); break;
 		default: Printf("\nUnknown obj header type 0x%X @ 0x%LX", hdr.type, obj_start_off); /*Exit(3);*/ break; 
