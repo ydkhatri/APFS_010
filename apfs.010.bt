@@ -1772,98 +1772,99 @@ typedef struct {
 
 // apfs_superblock (type: 0x0d)
 typedef struct {
-    char   magic[4]; // APSB
-    uint   fs_index;
-    vol_features features;
-    uint64 readonly_compatible_features; // none defined currently
-    vol_incompatible_features incompatible_features;
-    int64  unmount_time <read=ApfsTimeRead>;
-    uint64 fs_reserve_block_count;
-    uint64 fs_quota_block_count;
-    uint64 fs_alloc_count;
-    wrapped_meta_crypto_state apfs_meta_crypto; //byte   apfs_meta_crypto[20]; // 
-    uint   root_tree_type <read=ReadTreeType>;
-    uint   extentref_tree_type <read=ReadTreeType>;
-    uint   snap_meta_tree_type <read=ReadTreeType>;
-    //ref_obj omap_oid; // 'Maps node IDs to the inode Btree nodes'  //inlined
+  char   magic[4]; // APSB
+  uint   fs_index;
+  vol_features features;
+  uint64 readonly_compatible_features; // none defined currently
+  vol_incompatible_features incompatible_features;
+  int64  unmount_time <read=ApfsTimeRead>;
+  uint64 fs_reserve_block_count;
+  uint64 fs_quota_block_count;
+  uint64 fs_alloc_count;
+  wrapped_meta_crypto_state apfs_meta_crypto; //byte   apfs_meta_crypto[20]; // 
+  uint   root_tree_type <read=ReadTreeType>;
+  uint   extentref_tree_type <read=ReadTreeType>;
+  uint   snap_meta_tree_type <read=ReadTreeType>;
+  //ref_obj omap_oid; // 'Maps node IDs to the inode Btree nodes'  //inlined
+  //// BEGIN ref_obj
+  local uint64 rpos = FTell();
+  uint64 omap_oid;
+  if (omap_oid == 0)
+    Printf("\n%s\n", "omap_oid was 0 in obj_ref!! Not defining omap!!");
+  else if (SeekBlock(omap_oid) != 0) // outside disk image!
+    Printf("\n%s\n", "omap_oid invalid in obj_ref!! Not defining omap!!"); 
+  else
+    obj omap;
+  FSeek(rpos + 8);
+  //// END ref_obj
+  uint64 root_tree_oid;
+  //ref_obj extentref_tree_oid; /// 'Maps file extents to inodes' //inlined
+  //// BEGIN ref_obj
+  rpos = FTell();
+  uint64 extentref_tree_oid;
+  if (extentref_tree_oid == 0)
+    Printf("\n%s\n", "extentref_tree_oid was 0 in obj_ref!! Not defining extentref_tree!!");
+  else if (SeekBlock(extentref_tree_oid) != 0) // outside disk image!
+    Printf("\n%s\n", "extentref_tree_oid invalid in obj_ref!! Not defining extentref_tree!!"); 
+  else
+    obj extentref_tree;
+  FSeek(rpos + 8);
+  //// END ref_obj
+  //ref_obj snap_meta_tree_oid; //inlined
+  //// BEGIN ref_obj
+  rpos = FTell();
+  uint64 snap_meta_tree_oid;
+  if (snap_meta_tree_oid == 0)
+    Printf("\n%s\n", "snap_meta_tree_oid was 0 in obj_ref!! Not defining snap_meta_tree!!");
+  else if (SeekBlock(snap_meta_tree_oid) != 0) // outside disk image!
+    Printf("\n%s\n", "snap_meta_tree_oid invalid in obj_ref!! Not defining snap_meta_tree!!"); 
+  else
+    obj snap_meta_tree;
+  FSeek(rpos + 8);
+  //// END ref_obj
+  uint64 revert_to_xid;
+  uint64 revert_to_sblock_oid;
+  uint64 next_obj_id;
+  uint64 num_files;
+  uint64 num_directories;
+  uint64 num_symlinks;
+  uint64 num_other_fsobjects;
+  uint64 num_snapshots;
+  uint64 apfs_total_blocks_alloced;
+  uint64 apfs_total_blocks_freed;
+  Uuid   vol_uuid;
+  int64  last_mod_time <read=ApfsTimeRead>;
+  volume_flags vol_flags <read=ReadVolFlags>;
+  apfs_modified_by formatted_by;
+  apfs_modified_by modified_by[8];
+  char   volname[256];
+  uint32 next_doc_id;
+  uint16 apfs_role <read=ReadVolRoleFlags>;
+  uint16 reserved;
+  uint64 apfs_root_to_xid; // for later
+  uint64 apfs_er_state_oid; // for later
+  //new from 2020-06-22 spec 
+  uint64 cloneinfo_id_epoch;
+  uint64 cloneinfo_xid;   
+  uint64 snap_meta_ext_oid;
+  Uuid   volume_group_id;
+  uint64 integrity_meta_oid;
+  uint64 fext_tree_oid; // only valid for Sealed volumes
+  if ((incompatible_features & incompat_sealed_volume) == incompat_sealed_volume) {
     //// BEGIN ref_obj
-    local uint64 rpos = FTell();
-    uint64 omap_oid;
-    if (omap_oid == 0)
-        Printf("\n%s\n", "omap_oid was 0 in obj_ref!! Not defining omap!!");
-    else if (SeekBlock(omap_oid) != 0) // outside disk image!
-        Printf("\n%s\n", "omap_oid invalid in obj_ref!! Not defining omap!!"); 
-    else
-        obj omap;
-    FSeek(rpos + 8);
-    //// END ref_obj
-    uint64 root_tree_oid;
-    //ref_obj extentref_tree_oid; /// 'Maps file extents to inodes' //inlined
-    //// BEGIN ref_obj
-    rpos = FTell();
-    uint64 extentref_tree_oid;
-    if (extentref_tree_oid == 0)
-        Printf("\n%s\n", "extentref_tree_oid was 0 in obj_ref!! Not defining extentref_tree!!");
-    else if (SeekBlock(extentref_tree_oid) != 0) // outside disk image!
-        Printf("\n%s\n", "extentref_tree_oid invalid in obj_ref!! Not defining extentref_tree!!"); 
-    else
-        obj extentref_tree;
-    FSeek(rpos + 8);
-    //// END ref_obj
-    //ref_obj snap_meta_tree_oid; //inlined
-    //// BEGIN ref_obj
-    rpos = FTell();
-    uint64 snap_meta_tree_oid;
-    if (snap_meta_tree_oid == 0)
-        Printf("\n%s\n", "snap_meta_tree_oid was 0 in obj_ref!! Not defining snap_meta_tree!!");
-    else if (SeekBlock(snap_meta_tree_oid) != 0) // outside disk image!
-        Printf("\n%s\n", "snap_meta_tree_oid invalid in obj_ref!! Not defining snap_meta_tree!!"); 
-    else
-        obj snap_meta_tree;
-    FSeek(rpos + 8);
-    //// END ref_obj
-    uint64 revert_to_xid;
-    uint64 revert_to_sblock_oid;
-    uint64 next_obj_id;
-    uint64 num_files;
-    uint64 num_directories;
-    uint64 num_symlinks;
-    uint64 num_other_fsobjects;
-    uint64 num_snapshots;
-    uint64 apfs_total_blocks_alloced;
-    uint64 apfs_total_blocks_freed;
-    Uuid   vol_uuid;
-    int64  last_mod_time <read=ApfsTimeRead>;
-    volume_flags vol_flags <read=ReadVolFlags>;
-    apfs_modified_by formatted_by;
-    apfs_modified_by modified_by[8];
-    char   volname[256];
-    uint32 next_doc_id;
-    uint16 apfs_role <read=ReadVolRoleFlags>;
-    uint16 reserved;
-    uint64 apfs_root_to_xid; // for later
-    uint64 apfs_er_state_oid; // for later
-    //new from 2020-06-22 spec 
-    uint64 cloneinfo_id_epoch;
-    uint64 cloneinfo_xid;   
-    uint64 snap_meta_ext_oid;
-    Uuid   volume_group_id;
-    uint64 integrity_meta_oid;
-    //uint64 fext_tree_oid; //inlined
-    //// BEGIN ref_obj
-    rpos = FTell();
-    uint64 fext_tree_oid;
+    rpos = FTell() - 8;
     if (fext_tree_oid == 0)
-        Printf("\n%s\n", "fext_tree_oid was 0 in obj_ref!! Not defining fext_tree!!");
+      Printf("\n%s\n", "fext_tree_oid was 0 in obj_ref!! Not defining fext_tree!!");
     else if (SeekBlock(fext_tree_oid) != 0) // outside disk image!
-        Printf("\n%s\n", "fext_tree_oid invalid in obj_ref!! Not defining fext_tree!!"); 
+      Printf("\n%s\n", "fext_tree_oid invalid in obj_ref!! Not defining fext_tree!!"); 
     else
-        obj fext_tree;
+      obj fext_tree;
     FSeek(rpos + 8);
     //// END ref_obj
-    uint32 fext_tree_type <read=ReadTreeType>;
-    uint32 reserved_type <read=ReadTreeType>;
-    uint64 reserved_oid;
+  }
+  uint32 fext_tree_type <read=ReadTreeType>;
+  uint32 reserved_type <read=ReadTreeType>;
+  uint64 reserved_oid;
 } apfs_superblock;
 
 typedef struct {
