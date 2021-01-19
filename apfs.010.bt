@@ -4,12 +4,14 @@
 //      File: apfs.bt
 //   Authors: Yogesh Khatri
 //    E-mail: yogesh@swiftforensics.com
-//   Version: 1.10
+//   Version: 1.12
 //   Purpose: Read APFS (Apple File System) structures
 //  Category: Drives
 // File Mask: 
 //  ID Bytes: 
 //   History:
+//   1.12  2021-01-17 Yogesh Khatri: Add template display functions for nodes
+//   1.11  2020-09-23 Yogesh Khatri: Added more vol feature flags, more xfield types
 //   1.10  2020-09-16 Yogesh Khatri: Change pad2 to uncompressed_size in inode struct, (used by macOS 10.15+), add inode flags
 //   1.9   2020-09-15 Yogesh Khatri: Add hash types, snap_meta_ext & integrity_meta structures 
 //   1.8   2020-09-09 Yogesh Khatri: Add new items as per Apple spec 2020-06-22, support for sealed volumes
@@ -505,17 +507,21 @@ typedef enum <uint64> {
 } readonly_compatibility_features;
 
 typedef enum <uint64> {
-  feature_defrag_prerelease = 1, // ignored 10.13.6 +
-  feature_hardlink_map_records = 2,
-  feature_defrag = 4
+  FEATURE_DEFRAG_PRERELEASE = 1, // ignored 10.13.6 +
+  FEATURE_HARDLINK_MAP_RECORDS = 2,
+  FEATURE_DEFRAG = 4,
+  FEATURE_STRICTATIME = 8,
+  FEATURE_VOLGRP_SYSTEM_INO_SPACE = 0x10
 } vol_features <read=ReadFeatures>;
 
 string ReadFeatures(vol_features & f) {
   local string ret = "";
   SPrintf(ret, "(%d) ", f);
-  if (f & feature_defrag_prerelease) ret += "defrag_prerelease,";
-  if (f & feature_hardlink_map_records)    ret += "hardlink_map_records,";
-  if (f & feature_defrag)   ret += "defrag,";
+  if (f & FEATURE_DEFRAG_PRERELEASE) ret += "defrag_prerelease,";
+  if (f & FEATURE_HARDLINK_MAP_RECORDS)    ret += "hardlink_map_records,";
+  if (f & FEATURE_DEFRAG)   ret += "defrag,";
+  if (f & FEATURE_STRICTATIME)   ret += "strict_atime,";
+  if (f & FEATURE_VOLGRP_SYSTEM_INO_SPACE)   ret += "volgrp_system_ino_space,";
   if (ret != "" && Strcmp(ret[Strlen(ret)-1], ",") == 0)
       ret = StrDel(ret, Strlen(ret)-1, 1);
   return ret;
@@ -852,21 +858,23 @@ typedef enum {
 // End Encryption Structures
 
 typedef enum  <ubyte> {
-    xfield_type_name = 4, //0x0204, // 516,  INO_EXT_TYPE_NAME
-    xfield_type_dstream = 8, //0x2008, // 8200, INO_EXT_TYPE_DSTREAM
-    xfield_type_document_id = 3, //0x2203, // 8707, INO_EXT_TYPE_DOCUMENT_ID
-    xfield_type_device_node = 14,//0x220E, // 8718, INO_EXT_TYPE_RDEV
-    xfield_type_sparse_bytes = 13,//0x280D  // 10253 INO_EXT_TYPE_SPARSE_BYTES
-    // added from apfs spec
     xfield_type_snap_xid_or_sibling_id = 1,
-    xfield_type_delta_tree_oid= 2,
-    xfield_type_prev_fsize    = 5,
-    xfield_type_reserved_6    = 6,
-    xfield_type_finder_info   = 7,
-    xfield_type_reserved_9    = 9,
-    xfield_type_dir_stats_key = 10,
-    xfield_type_fs_uuid       = 11,
-    xfield_type_reserved_12   = 12
+    xfield_type_delta_tree_oid  = 2,
+    xfield_type_document_id     = 3,
+    xfield_type_name            = 4,
+    xfield_type_dstream         = 8,
+    xfield_type_prev_fsize      = 5,
+    xfield_type_reserved_6      = 6,
+    xfield_type_finder_info     = 7,
+    xfield_type_reserved_9      = 9,
+    xfield_type_dir_stats_key   = 10,
+    xfield_type_fs_uuid         = 11,
+    xfield_type_reserved_12     = 12,
+    xfield_type_sparse_bytes    = 13,
+    xfield_type_device_node   = 14,
+    //xfield_type_rdev            = 14,
+    xfield_type_purgeable_flags = 15,
+    xfield_type_orig_sync_root_id = 16
 } xfield_type;
 
 typedef enum <ushort> {
@@ -1222,6 +1230,8 @@ typedef struct {  // 0x30
         case xfield_type_finder_info: uint32 x_finderdata; break;
         case xfield_type_dir_stats_key: uint64 x_dir_stats_key; break;
         case xfield_type_fs_uuid: Uuid x_uuid; break;
+        case xfield_type_purgeable_flags: uint64 x_uuid; break; // not sure , is this uint64??
+        case xfield_type_orig_sync_root_id: uint64 x_uuid; break;
 			  default: {
           byte xf_data[xf_hdr[_index].length];
           //Printf("\nUnknown x_type 0x%X, x_flags= 0x%X", xf_hdr[_index].x_type, xf_hdr[_index].x_flags);
@@ -1288,7 +1298,13 @@ typedef struct { // 0x90
         FSkip( (8 - xf_hdr[_index].length) % 8 );
     }
   }
-} drec_val;
+} drec_val <read=ReadDrecVal>;
+
+string ReadDrecVal(drec_val & v) {
+  local string ret = "";
+  SPrintf(ret, "Obj_ID %Lu, %s", v.node_id, StrDel(EnumToString(v.type_item), 0, 10));
+  return ret;
+}
 
 typedef struct {  // 0xc0
     uint64 file_id;
@@ -1347,6 +1363,11 @@ typedef struct {
   uint64 phys_block_num;
 } fext_tree_val;
 
+typedef struct {
+  uint64 binv_child_oid;
+  ubyte  binv_child_hash[32]; //BTREE_NODE_HASH_SIZE_MAX=64 acc to spec, but in reality appears to be max size of hash type used! 32 seen
+} btn_index_node_val;
+
 //// node entries
 typedef struct {
   local uint64 pos = FTell();
@@ -1393,8 +1414,11 @@ typedef struct {
           key_header.kind_0 == kind_sibling_link ||
           key_header.kind_0 == kind_sibling_map ||
           key_header.kind_0 == kind_file_info) {
-          Printf("\nIn non-leaf node, got kind 0x%X %s, treetype=%s", key_header.kind_0, ReadKind(key_header.kind_0), EnumToString(parentof(parentof(this)).hdr.subtype)); // for debug
-          uint64 val <bgcolor=cLtGreen>;
+          //Printf("\nIn non-leaf node, got kind 0x%X %s, treetype=%s", key_header.kind_0, ReadKind(key_header.kind_0), EnumToString(parentof(parentof(this)).hdr.subtype)); // for debug
+          if ((parentof(this).node_type & BTNODE_HASHED) == BTNODE_HASHED)
+            btn_index_node_val val <bgcolor=cLtGreen>;
+          else
+            uint64 val <bgcolor=cLtGreen>;
       }
       else if (key_header.kind_0 == kind_extent) {
         if (Follow_Pointer) {
@@ -1435,7 +1459,13 @@ typedef struct {
     case kind_file_info: file_info_val val; break;
   }
   FSeek(pos2);
-} node_entry;
+} node_entry <read=ReadNodeEntry>;
+
+string ReadNodeEntry(node_entry & n) {
+  local string ret = "";
+  SPrintf(ret, "ObjID %Lu, %s", n.key_header.obj_id, ReadKind(n.key_header.kind_0));
+  return ret;
+}
 
 typedef struct {
   //local uint64 pos = FTell();
@@ -1493,7 +1523,13 @@ typedef struct {
     
     FSeek(pos2);
     
-} omap_node_entry;
+} omap_node_entry <read=ReadOmapNodeEntry>;
+
+string ReadOmapNodeEntry(omap_node_entry & n) {
+  local string ret = "";
+  SPrintf(ret, "OID %Lu, XID %d", n.key_header.oid, n.key_header.xid);
+  return ret;
+}
 
 typedef struct {
   //local uint64 pos = FTell();
