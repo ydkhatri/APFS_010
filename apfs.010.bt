@@ -4,12 +4,13 @@
 //      File: apfs.bt
 //   Authors: Yogesh Khatri
 //    E-mail: yogesh@swiftforensics.com
-//   Version: 1.12
+//   Version: 1.13
 //   Purpose: Read APFS (Apple File System) structures
 //  Category: Drives
 // File Mask: 
 //  ID Bytes: 
 //   History:
+//   1.13  2021-02-26 Yogesh Khatri: Change apfs_role display to enum (from flag)
 //   1.12  2021-01-17 Yogesh Khatri: Add template display functions for nodes
 //   1.11  2020-09-23 Yogesh Khatri: Added more vol feature flags, more xfield types
 //   1.10  2020-09-16 Yogesh Khatri: Change pad2 to uncompressed_size in inode struct, (used by macOS 10.15+), add inode flags
@@ -311,26 +312,25 @@ string ReadBtreeNodeFlags(btree_node_flags & f) {
 string ReadVolRoleFlags(uint16 & f) {
   local string ret = "";
   SPrintf(ret, "(%d) ", f);
-  if (f & APFS_VOL_ROLE_NONE) ret+= "NONE,";
-  if (f & APFS_VOL_ROLE_SYSTEM) ret+= "SYSTEM,";
-  if (f & APFS_VOL_ROLE_USER) ret+= "USER,";
-  if (f & APFS_VOL_ROLE_RECOVERY) ret+= "RECOVERY,";
-  if (f & APFS_VOL_ROLE_VM) ret+= "VM,";
-  if (f & APFS_VOL_ROLE_PREBOOT) ret+= "PREBOOT,";
-  if (f & APFS_VOL_ROLE_INSTALLER) ret+= "INSTALLER,";
-  if (f & APFS_VOL_ROLE_DATA) ret+= "DATA,";
-  if (f & APFS_VOL_ROLE_BASEBAND) ret+= "BASEBAND,";
-  if (f & APFS_VOL_ROLE_UPDATE) ret+= "UPDATE,";
-  if (f & APFS_VOL_ROLE_XART) ret+= "XART,";
-  if (f & APFS_VOL_ROLE_HARDWARE) ret+= "HARDWARE,";
-  if (f & APFS_VOL_ROLE_BACKUP) ret+= "BACKUP,";
-  if (f & APFS_VOL_ROLE_RESERVED_7) ret+= "RESERVED_7,";
-  if (f & APFS_VOL_ROLE_RESERVED_8) ret+= "RESERVED_8,";
-  if (f & APFS_VOL_ROLE_ENTERPRISE) ret+= "ENTERPRISE,";
-  if (f & APFS_VOL_ROLE_RESERVED_10) ret+= "RESERVED_10,";
-  if (f & APFS_VOL_ROLE_PRELOGIN) ret+= "PRELOGIN,";
-  if (ret != "" && Strcmp(ret[Strlen(ret)-1], ",") == 0)
-      ret = StrDel(ret, Strlen(ret)-1, 1);
+  if (f == APFS_VOL_ROLE_NONE) ret+= "NONE";
+  else if (f == APFS_VOL_ROLE_SYSTEM) ret+= "SYSTEM";
+  else if (f == APFS_VOL_ROLE_USER) ret+= "USER";
+  else if (f == APFS_VOL_ROLE_RECOVERY) ret+= "RECOVERY,";
+  else if (f == APFS_VOL_ROLE_VM) ret+= "VM";
+  else if (f == APFS_VOL_ROLE_PREBOOT) ret+= "PREBOOT";
+  else if (f == APFS_VOL_ROLE_INSTALLER) ret+= "INSTALLER";
+  else if (f == APFS_VOL_ROLE_DATA) ret+= "DATA";
+  else if (f == APFS_VOL_ROLE_BASEBAND) ret+= "BASEBAND";
+  else if (f == APFS_VOL_ROLE_UPDATE) ret+= "UPDATE";
+  else if (f == APFS_VOL_ROLE_XART) ret+= "XART";
+  else if (f == APFS_VOL_ROLE_HARDWARE) ret+= "HARDWARE";
+  else if (f == APFS_VOL_ROLE_BACKUP) ret+= "BACKUP";
+  else if (f == APFS_VOL_ROLE_RESERVED_7) ret+= "RESERVED_7";
+  else if (f == APFS_VOL_ROLE_RESERVED_8) ret+= "RESERVED_8";
+  else if (f == APFS_VOL_ROLE_ENTERPRISE) ret+= "ENTERPRISE";
+  else if (f == APFS_VOL_ROLE_RESERVED_10) ret+= "RESERVED_10";
+  else if (f == APFS_VOL_ROLE_PRELOGIN) ret+= "PRELOGIN";
+
   return ret;
 }
 
@@ -1528,6 +1528,7 @@ typedef struct {
 string ReadOmapNodeEntry(omap_node_entry & n) {
   local string ret = "";
   SPrintf(ret, "OID %Lu, XID %d", n.key_header.oid, n.key_header.xid);
+  //SPrintf(ret, "OID %LX, XID %X", n.key_header.oid, n.key_header.xid);
   return ret;
 }
 
@@ -1755,7 +1756,18 @@ typedef struct {
         obj tree;
     FSeek(rpos + 8);
     //// END ref_obj
+    //ref_obj   snapshot_tree_oid; //inlined
+    //// BEGIN ref_obj
+    rpos = FTell();
     uint64 snapshot_tree_oid;
+    if (tree_oid == 0)
+        Printf("\n%s\n", "snapshot_tree_oid was 0 in obj_ref!! Not defining root!!");
+    else if (SeekBlock(snapshot_tree_oid) != 0) // outside disk image!
+        Printf("\n%s\n", "snapshot_tree_oid invalid in obj_ref!! Not defining root!!"); 
+    else
+        obj snap_tree;
+    FSeek(rpos + 8);
+    //// END ref_obj
     uint64 most_recent_snap;
     uint64 pending_revert_min;
     uint64 pending_revert_max;
